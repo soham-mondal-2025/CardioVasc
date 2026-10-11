@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CardioVision 3D - Multimodal Cardiac Risk & Vessel Stenosis Viewer</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Three.js & GLTFLoader & OrbitControls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <!-- Chart.js for SHAP visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .mono { font-family: 'JetBrains Mono', monospace; }
+        
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+        /* Glowing vessel animations */
+        @keyframes pulse-danger {
+            0%, 100% { opacity: 1; filter: drop-shadow(0 0 10px rgba(239, 68, 68, 0.8)); }
+            50% { opacity: 0.6; filter: drop-shadow(0 0 20px rgba(239, 68, 68, 1)); }
+        }
+        .pulse-severe { animation: pulse-danger 1.5s infinite ease-in-out; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col antialiased">
+
+    <!-- Top Clinical Header & Disclaimer Bar -->
+    <header class="bg-slate-900/90 backdrop-blur border-b border-slate-800 sticky top-0 z-50 px-4 py-2.5">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-rose-600 to-red-500 flex items-center justify-center shadow-lg shadow-red-500/20">
+                    <i data-lucide="heart-pulse" class="w-6 h-6 text-white animate-pulse"></i>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h1 class="text-lg font-bold tracking-tight text-white">CardioVision 3D</h1>
+                        <span class="px-2 py-0.5 text-xs font-semibold rounded bg-rose-500/20 text-rose-400 border border-rose-500/30">Track A: Multimodal AI</span>
+                        <span class="px-2 py-0.5 text-xs font-semibold rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">CAD Acc: 91.3% | AUC: 0.970</span>
+                    </div>
+                    <p class="text-xs text-slate-400">Interactive 3D Anatomical Risk Mapping for Coronary Artery Disease & Vessel Stenosis</p>
+                </div>
+            </div>
+
+            <!-- Header Quick Actions -->
+            <div class="flex items-center gap-3">
+                <button id="btnMetricsModal" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 flex items-center gap-1.5 transition">
+                    <i data-lucide="bar-chart-3" class="w-4 h-4 text-emerald-400"></i>
+                    <span>Model Validation Report</span>
+                </button>
+                <div class="flex items-center gap-1 text-[11px] text-amber-300/90 bg-amber-500/10 px-3 py-1.5 rounded-lg border border-amber-500/20">
+                    <i data-lucide="shield-alert" class="w-3.5 h-3.5 text-amber-400 flex-shrink-0"></i>
+                    <span class="truncate max-w-[280px] lg:max-w-md">Decision support & educational tool. Not diagnostic imaging substitute.</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Workspace Grid -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-3 grid grid-cols-1 lg:grid-cols-12 gap-3 overflow-hidden">
+        
+        <!-- LEFT PANEL: Patient Inputs & Clinical Profiles (4 Cols) -->
+        <section class="lg:col-span-4 bg-slate-900/70 border border-slate-800 rounded-2xl flex flex-col overflow-hidden max-h-[calc(100vh-100px)]">
+            <div class="p-3.5 border-b border-slate-800 flex items-center justify-between bg-slate-900/90">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="user" class="w-4 h-4 text-rose-400"></i>
+                    <h2 class="text-sm font-semibold text-white">Patient Clinical Data</h2>
+                </div>
+                <span class="text-xs text-slate-400">Z-Alizadeh Sani Extension</span>
+            </div>
+
+            <!-- Preset Patient Switcher -->
+            <div class="p-3 border-b border-slate-800 bg-slate-950/40">
+                <label class="text-[11px] font-medium text-slate-400 block mb-1.5">Load Clinical Preset:</label>
+                <select id="presetSelect" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-rose-500 transition">
+                    <option value="patient-1">Patient #1 (Severe Multi-Vessel CAD - High Risk)</option>
+                    <option value="patient-2">Patient #2 (Isolated LAD Stenosis - Anterior)</option>
+                    <option value="patient-3">Patient #3 (Healthy / Normal Control)</option>
+                </select>
+                <p id="presetDesc" class="text-[11px] text-slate-400 mt-1 italic"></p>
+            </div>
+
+            <!-- Scrollable Input Form -->
+            <div class="flex-1 overflow-y-auto p-3.5 space-y-3.5 text-xs">
+                
+                <!-- Demographics & Vitals -->
+                <div class="bg-slate-950/60 p-3 rounded-xl border border-slate-800/80 space-y-2.5">
+                    <h3 class="font-semibold text-rose-300 flex items-center gap-1.5 text-[11px] uppercase tracking-wider">
+                        <i data-lucide="activity" class="w-3.5 h-3.5"></i> Demographics & Vital Signs
+                    </h3>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="text-slate-400">Age (years):</label>
+                            <input type="number" id="inp_Age" class="w-full bg-slate-800 rounded px-2 py-1 text-slate-200 border border-slate-700" value="64">
+                        </div>
+                        <div>
+                            <label class="text-slate-400">Sex:</label>
+                            <select id="inp_Sex" class="w-full bg-slate-800 rounded px-2 py-1 text-slate-200 border border-slate-700">
+                                <option value="1">Male</option>
+                                <option value="0">Female</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-slate-400">Resting BP (mmHg):</label>
+                            <input type="number" id="inp_BP" class="w-full bg-slate-800 rounded px-2 py-1 text-slate-200 border border-slate-700" value="150">
+                        </div>
+                        <div>
+                            <label class="text-slate-400">Pulse Rate (bpm):</label>
+                            <input type="number" id="inp_PR" class="w-full bg-slate-800 rounded px-2 py-1 text-slate-200 border border-slate-700" value="88">
+                        </div>
+                        <div>
+                            <label class="text-slate-400">BMI (kg/m²):</label>
+                            <input type="number" step="0.1" id="inp_BMI" class="w-full bg-slate-800 rounded px-2 py-1 text-slate-200 border border-slate-700" value="27.7">
+                        </div>
+                        <div>
+                            <label class="text-slate-400">Typical Chest Pain:</label>
+                            <select id="inp_Typical_Chest_Pain" class="w-full bg-slate-800 rounded px-2 py-1 text-slate-200 border border-slate-700">
+                                <option value="1">Yes (Typical Angina)</option>
+                                <option value="0">No</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ECG & Echo Findings -->
+                <div class="bg-slate-950/60 p-3 rounded-xl border border-slate-800/80 space-y-2.5">
+                    <h3 class="font-semibold text-rose-300 flex items-center gap-1.5 text-[11px] uppercase tracking-wider">
+                        <i data-lucide="waves" class="w-3.5 h-3.5"></i> ECG & Echocardiography
+                    </h3>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="text-slate-400">Region with RWMA:</label>
+                            <select id="inp_Region_RWMA" class="w-full bg-slate-800 rounded px-2 py-1 text-slate-200 border border-slate-700">
+                                <option value="0">0: None (Normal motion)</option>
+                                <option value="1">1: Anterior (LAD territory)</option>
+                                <option value="2">2: Inferior (RCA territory)</option>
+                                <option value="3">3: Lateral (LCX territory)</option>
+                                <option value="4">4: Apical / Multi-segment</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-slate-400">Ejection Fraction (EF %):</label>
+                            <input type="number" id="inp_EF_TTE" class="w-full bg-slate-800 rounded px-2 py-1 text-slate-200 border border-slate-700" value="40">
+                        </div>
+                        <div>
+                            <label class="text-slate-400">T-Inversion:</label>
+                            <select id="inp_Tinversion" class="w-full bg-slate-800 rounded px-2 py-1 text-slate-200 border border-slate-700">
+                                <option value="1">Yes (Ischemia)</option>
+                                <option value="0">No</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-slate-400">ST Depression:</label>
+                            <select id="inp_St_Depression" class="w-full bg-slate-800 rounded px-2 py-1 text-slate-200 border border-slate-700">
+                                <option value="1">Yes</option>
+                                <option value="0">No</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-slate-400">ST Elevation:</label>
+                            <select id="inp_St_Elevation" class="w-full bg-slate-800 rounded px-2 py-1 text-slate-200 border border-slate-700">
+                                <option value="0">No</option>
+                                <option value="1">Yes (Acute Injury)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-slate-400">Poor R Progression:</label>
+                            <select id="inp_Poor_R_Progression" class="w-full bg-slate-800 rounded px-2 py-1 text-slate-200 border border-slate-700">
+                                <option value="1">Yes</option>
+                                <option value="0">No</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Laboratory & Lipid Panel -->
+                <div class="bg-slate-950/60 p-3 rounded-xl border border-slate-800/80 space-y-2.5">
+                    <h3 class="font-semibold text-rose-300 flex items-center gap-1.5 text-[11px] uppercase tracking-wider">
+                        <i data-lucide="flask-conical" class="w-3.5 h-3.5"></i> Lab Biomarkers
+                    </h3>
+                    <div class="grid grid-cols-3 gap-2">
+                        <div>
+                            <label class="text-slate-400">TG (mg/dL):</label>
+                            <input type="number" id="inp_TG" class="w-full bg-slate-800 rounded px-2 py-1 text-slate-200 border border-slate-700" value="240">
+                        </div>
+                        <div>
+                            <label class="text-slate-400">LDL (mg/dL):</label>
+                            <input type="number" id="inp_LDL" class="w-full bg-slate-800 rounded px-2 py-1 text-slate-200 border border-slate-700" value="145">
+                        </div>
+                        <div>
+                            <label class="text-slate-400">HDL (mg/dL):</label>
+                            <input type="number" id="inp_HDL" class="w-full bg-slate-800 rounded px-2 py-1 text-slate-200 border border-slate-700" value="34">
+                        </div>
+                        <div>
+                            <label class="text-slate-400">FBS (mg/dL):</label>
+                            <input type="number" id="inp_FBS" class="w-full bg-slate-800 rounded px-2 py-1 text-slate-200 border border-slate-700" value="165">
+                        </div>
+                        <div>
+                            <label class="text-slate-400">HTN:</label>
+                            <select id="inp_HTN" class="w-full bg-slate-800 rounded px-2 py-1 text-slate-200 border border-slate-700">
+                                <option value="1">Yes</option>
+                                <option value="0">No</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-slate-400">DM:</label>
+                            <select id="inp_DM" class="w-full bg-slate-800 rounded px-2 py-1 text-slate-200 border border-slate-700">
+                                <option value="1">Yes</option>
+                                <option value="0">No</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Run Prediction Button -->
+            <div class="p-3 border-t border-slate-800 bg-slate-900">
+                <button id="btnPredict" class="w-full py-2.5 px-4 rounded-xl font-semibold bg-gradient-to-r from-rose-600 to-red-500 hover:from-rose-500 hover:to-red-400 text-white shadow-lg shadow-rose-600/30 flex items-center justify-center gap-2 transition active:scale-95">
+                    <i data-lucide="play" class="w-4 h-4 fill-white"></i>
+                    <span>Execute 3D Cardiac Risk Prediction</span>
+                </button>
+            </div>
+        </section>
+
+        <!-- CENTER PANEL: Interactive 3D Anatomical Heart Viewer (5 Cols) -->
+        <section class="lg:col-span-5 bg-slate-900/70 border border-slate-800 rounded-2xl flex flex-col overflow-hidden relative min-h-[460px] lg:min-h-0">
+            <!-- Viewer Toolbar -->
+            <div class="p-3 border-b border-slate-800 bg-slate-900/90 flex items-center justify-between z-10">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="box" class="w-4 h-4 text-rose-400"></i>
+                    <h2 class="text-sm font-semibold text-white">Interactive 3D Anatomical Heart</h2>
+                </div>
+                <!-- 3D Controls buttons -->
+                <div class="flex items-center gap-1.5 text-xs">
+                    <button id="btnResetCam" title="Reset Camera View" class="p-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300">
+                        <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+                    </button>
+                    <button id="btnBeatingToggle" title="Toggle Beating Heart" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center gap-1 text-[11px]">
+                        <i data-lucide="heart" class="w-3 h-3 text-rose-400"></i> Pulse
+                    </button>
+                    <button id="btnXrayToggle" title="Toggle X-Ray Translucent Myocardium" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center gap-1 text-[11px]">
+                        <i data-lucide="eye" class="w-3 h-3 text-cyan-400"></i> X-Ray
+                    </button>
+                </div>
+            </div>
+
+            <!-- 3D WebGL Canvas Container -->
+            <div id="three-container" class="flex-1 w-full h-full relative cursor-grab active:cursor-grabbing bg-radial from-slate-900 via-slate-950 to-black">
+                <!-- Loading Overlay -->
+                <div id="loader" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 z-20 transition-opacity">
+                    <div class="w-10 h-10 border-4 border-rose-500 border-t-transparent rounded-full animate-spin mb-3"></div>
+                    <p class="text-xs text-slate-300 font-medium">Loading 3D Cardiac Mesh...</p>
+                    <p class="text-[10px] text-slate-500 mt-1">Open-Source Anatomical Heart GLTF</p>
+                </div>
+
+                <!-- 3D Hover Tooltip -->
+                <div id="tooltip3d" class="absolute pointer-events-none hidden z-30 bg-slate-900/95 border border-slate-700 text-white rounded-lg p-2.5 shadow-xl text-xs max-w-xs backdrop-blur">
+                    <h4 id="ttTitle" class="font-bold text-rose-400 text-xs flex items-center gap-1.5"></h4>
+                    <p id="ttDetails" class="text-slate-300 text-[11px] mt-0.5"></p>
+                    <div id="ttRisk" class="mt-1.5 pt-1.5 border-t border-slate-800 flex justify-between items-center text-[11px]"></div>
+                </div>
+
+                <!-- Vessel Quick Camera Focus Buttons -->
+                <div class="absolute bottom-3 left-3 z-10 flex flex-wrap gap-1.5">
+                    <button onclick="focusVessel('LAD')" class="px-2.5 py-1 rounded-lg bg-slate-900/80 backdrop-blur border border-slate-700/80 text-[11px] text-slate-200 hover:border-rose-500 flex items-center gap-1.5 shadow">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500 inline-block" id="dotLAD"></span> LAD (Front)
+                    </button>
+                    <button onclick="focusVessel('LCX')" class="px-2.5 py-1 rounded-lg bg-slate-900/80 backdrop-blur border border-slate-700/80 text-[11px] text-slate-200 hover:border-rose-500 flex items-center gap-1.5 shadow">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500 inline-block" id="dotLCX"></span> LCX (Side)
+                    </button>
+                    <button onclick="focusVessel('RCA')" class="px-2.5 py-1 rounded-lg bg-slate-900/80 backdrop-blur border border-slate-700/80 text-[11px] text-slate-200 hover:border-rose-500 flex items-center gap-1.5 shadow">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500 inline-block" id="dotRCA"></span> RCA (Right)
+                    </button>
+                </div>
+
+                <!-- 3D Legend -->
+                <div class="absolute top-3 right-3 z-10 bg-slate-900/80 backdrop-blur border border-slate-800 p-2 rounded-xl text-[10px] space-y-1 text-slate-300 shadow">
+                    <div class="font-semibold text-slate-400 uppercase tracking-wider text-[9px] mb-1">Stenosis Risk Mapping</div>
+                    <div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded bg-emerald-500"></span> Normal / Low (&lt;35%)</div>
+                    <div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded bg-amber-500"></span> Moderate (35%-60%)</div>
+                    <div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded bg-red-500"></span> Severe Stenosis (&gt;60%)</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- RIGHT PANEL: Clinical Dashboard & SHAP Interpretability (3 Cols) -->
+        <section class="lg:col-span-3 bg-slate-900/70 border border-slate-800 rounded-2xl flex flex-col overflow-hidden max-h-[calc(100vh-100px)]">
+            <div class="p-3.5 border-b border-slate-800 flex items-center justify-between bg-slate-900/90">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="gauge" class="w-4 h-4 text-rose-400"></i>
+                    <h2 class="text-sm font-semibold text-white">Clinical Risk Dashboard</h2>
+                </div>
+                <span class="text-xs text-emerald-400 font-mono">Live Sync</span>
+            </div>
+
+            <!-- Scrollable Dashboard Content -->
+            <div class="flex-1 overflow-y-auto p-3.5 space-y-3.5 text-xs">
+                
+                <!-- Overall CAD Status Hero Card -->
+                <div id="cadCard" class="p-4 rounded-xl bg-slate-950/80 border border-slate-800 relative overflow-hidden transition-all">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Overall CAD Status</span>
+                        <span id="badgeCadStatus" class="px-2 py-0.5 text-xs font-bold rounded bg-rose-500/20 text-rose-400 border border-rose-500/30">HIGH RISK</span>
+                    </div>
+                    <div class="flex items-baseline gap-2">
+                        <span id="txtCadProb" class="text-3xl font-extrabold font-mono text-white">88.4%</span>
+                        <span class="text-xs text-slate-400 font-medium">CAD Probability</span>
+                    </div>
+                    <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden mt-3">
+                        <div id="barCadProb" class="h-full bg-gradient-to-r from-amber-500 to-rose-600 transition-all duration-700" style="width: 88%;"></div>
+                    </div>
+                    <p id="txtCadSummary" class="text-[11px] text-slate-400 mt-2">Significant arterial occlusion detected across coronary vessel tree.</p>
+                </div>
+
+                <!-- Vessel Stenosis Breakdown Cards -->
+                <div class="space-y-2">
+                    <h3 class="font-semibold text-slate-300 text-[11px] uppercase tracking-wider flex items-center gap-1.5">
+                        <i data-lucide="git-branch" class="w-3.5 h-3.5 text-rose-400"></i> Multi-Vessel Stenosis Status
+                    </h3>
+
+                    <!-- LAD Card -->
+                    <div id="cardLAD" class="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80 hover:border-slate-700 transition cursor-pointer" onclick="focusVessel('LAD')">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <span class="w-2.5 h-2.5 rounded-full bg-rose-500" id="badgeDotLAD"></span>
+                                <span class="font-bold text-slate-200">LAD (Left Anterior Descending)</span>
+                            </div>
+                            <span id="txtLadProb" class="font-mono font-bold text-rose-400">82.1%</span>
+                        </div>
+                        <p class="text-[10px] text-slate-400 mt-1">Territory: Anterior heart wall, septum, apex</p>
+                    </div>
+
+                    <!-- LCX Card -->
+                    <div id="cardLCX" class="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80 hover:border-slate-700 transition cursor-pointer" onclick="focusVessel('LCX')">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <span class="w-2.5 h-2.5 rounded-full bg-amber-500" id="badgeDotLCX"></span>
+                                <span class="font-bold text-slate-200">LCX (Left Circumflex)</span>
+                            </div>
+                            <span id="txtLcxProb" class="font-mono font-bold text-amber-400">54.2%</span>
+                        </div>
+                        <p class="text-[10px] text-slate-400 mt-1">Territory: Lateral and posterior left ventricle</p>
+                    </div>
+
+                    <!-- RCA Card -->
+                    <div id="cardRCA" class="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80 hover:border-slate-700 transition cursor-pointer" onclick="focusVessel('RCA')">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <span class="w-2.5 h-2.5 rounded-full bg-emerald-500" id="badgeDotRCA"></span>
+                                <span class="font-bold text-slate-200">RCA (Right Coronary Artery)</span>
+                            </div>
+                            <span id="txtRcaProb" class="font-mono font-bold text-emerald-400">28.7%</span>
+                        </div>
+                        <p class="text-[10px] text-slate-400 mt-1">Territory: Right ventricle, inferior wall, SA/AV nodes</p>
+                    </div>
+                </div>
+
+                <!-- Clinical Explainability: SHAP Breakdown -->
+                <div class="bg-slate-950/60 p-3 rounded-xl border border-slate-800/80 space-y-2">
+                    <div class="flex items-center justify-between">
+                        <h3 class="font-semibold text-slate-300 text-[11px] uppercase tracking-wider flex items-center gap-1.5">
+                            <i data-lucide="sparkles" class="w-3.5 h-3.5 text-amber-400"></i> SHAP Clinical Factors
+                        </h3>
+                        <span class="text-[10px] text-slate-500">TreeExplainer</span>
+                    </div>
+                    <p class="text-[10px] text-slate-400">Feature contributions pushing risk higher (red) or lower (green):</p>
+                    <div class="h-44 w-full relative">
+                        <canvas id="shapChart"></canvas>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Model Metrics Modal -->
+    <div id="metricsModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full p-5 space-y-4 shadow-2xl overflow-y-auto max-h-[90vh]">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="award" class="w-5 h-5 text-emerald-400"></i>
+                    <h3 class="text-base font-bold text-white">Model Evaluation & Benchmark Report</h3>
+                </div>
+                <button onclick="closeMetricsModal()" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            
+            <p class="text-xs text-slate-400">Evaluated on UCI Extension of Z-Alizadeh Sani Dataset (303 patient records, 59 clinical parameters) with target leakage exclusion and SMOTE training fold balancing.</p>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-xs text-left border-collapse">
+                    <thead>
+                        <tr class="border-b border-slate-800 text-slate-400 uppercase text-[10px]">
+                            <th class="py-2 px-3">Target Task</th>
+                            <th class="py-2 px-3">Accuracy</th>
+                            <th class="py-2 px-3">ROC-AUC</th>
+                            <th class="py-2 px-3">Precision</th>
+                            <th class="py-2 px-3">Recall</th>
+                            <th class="py-2 px-3">F1-Score</th>
+                        </tr>
+                    </thead>
+                    <tbody id="metricsTableBody" class="divide-y divide-slate-800/60 font-mono text-slate-200">
+                        <!-- Populated by JS -->
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs text-slate-400 space-y-1">
+                <span class="font-semibold text-slate-300">Target Leakage Prevention:</span>
+                <p>In accordance with Hackathon Track A rules, all vessel labels (LAD, LCX, RCA) and angiography Cath findings were strictly excluded from input features to prevent leakage.</p>
+            </div>
+
+            <div class="flex justify-end pt-2">
+                <button onclick="closeMetricsModal()" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Application Script -->
+    <script src="/static/js/app.js"></script>
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>

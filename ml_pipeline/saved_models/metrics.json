@@ -1,0 +1,82 @@
+{
+  "Cath": {
+    "target": "Cath",
+    "label": "Overall Coronary Artery Disease (CAD)",
+    "accuracy": 91.3,
+    "roc_auc": 0.9697,
+    "precision": 0.9143,
+    "recall": 0.9697,
+    "f1_score": 0.9412,
+    "threshold": 0.4,
+    "confusion_matrix": [
+      [
+        10,
+        3
+      ],
+      [
+        1,
+        32
+      ]
+    ]
+  },
+  "LAD": {
+    "target": "LAD",
+    "label": "LAD (Left Anterior Descending) Stenosis",
+    "accuracy": 83.61,
+    "roc_auc": 0.8411,
+    "precision": 0.7955,
+    "recall": 0.9722,
+    "f1_score": 0.875,
+    "threshold": 0.31,
+    "confusion_matrix": [
+      [
+        16,
+        9
+      ],
+      [
+        1,
+        35
+      ]
+    ]
+  },
+  "LCX": {
+    "target": "LCX",
+    "label": "LCX (Left Circumflex) Stenosis",
+    "accuracy": 65.57,
+    "roc_auc": 0.6678,
+    "precision": 0.6154,
+    "recall": 0.3333,
+    "f1_score": 0.4324,
+    "threshold": 0.54,
+    "confusion_matrix": [
+      [
+        32,
+        5
+      ],
+      [
+        16,
+        8
+      ]
+    ]
+  },
+  "RCA": {
+    "target": "RCA",
+    "label": "RCA (Right Coronary Artery) Stenosis",
+    "accuracy": 73.77,
+    "roc_auc": 0.7746,
+    "precision": 0.7692,
+    "recall": 0.4348,
+    "f1_score": 0.5556,
+    "threshold": 0.58,
+    "confusion_matrix": [
+      [
+        35,
+        3
+      ],
+      [
+        13,
+        10
+      ]
+    ]
+  }
+}
