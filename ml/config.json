@@ -1,0 +1,12 @@
+{
+  "csv_path": "data/patients.csv",
+  "target_columns": {
+    "cad": "Cath",
+    "lad": "LAD",
+    "lcx": "LCX",
+    "rca": "RCA"
+  },
+  "leakage_columns": ["LAD", "LCX", "RCA", "Cath"],
+  "test_size": 0.25,
+  "random_state": 42
+}

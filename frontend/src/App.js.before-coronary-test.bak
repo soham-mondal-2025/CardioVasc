@@ -1,0 +1,127 @@
+import React, { useEffect, useState } from 'react';
+import axios from 'axios';
+import HeartViewer from './components/HeartViewer';
+import Dashboard from './components/Dashboard';
+
+const initialForm = {
+  age: 52, systolicBP: 132, cholesterol: 214, pulse: 78,
+  stElevation: false, tInversion: false, rwma: false
+};
+
+export default function App() {
+  const [form, setForm] = useState(initialForm);
+  const [predictionData, setPredictionData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [apiStatus, setApiStatus] = useState('Checking API…');
+  const [apiError, setApiError] = useState('');
+
+  useEffect(() => {
+    axios.get('/api/hello')
+      .then(({ data }) => setApiStatus(data.message || 'API connected'))
+      .catch(() => setApiStatus('API offline — start backend on port 5002'));
+  }, []);
+
+  function updateField(event) {
+    const { name, value, type, checked } = event.target;
+    setForm(current => ({ ...current, [name]: type === 'checkbox' ? checked : value }));
+  }
+
+  async function runPrediction(event) {
+    event.preventDefault();
+    setLoading(true);
+    setApiError('');
+    try {
+      const payload = {
+        ...form,
+        age: Number(form.age),
+        systolicBP: Number(form.systolicBP),
+        cholesterol: Number(form.cholesterol),
+        pulse: Number(form.pulse)
+      };
+      const { data } = await axios.post('/api/predict', payload);
+      setPredictionData(data);
+    } catch (error) {
+      setApiError('Prediction API failed. Check that the backend is running on port 5002.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="app-shell">
+      <header className="topbar">
+        <div className="brand-mark" aria-hidden="true">♥</div>
+        <div>
+          <h1>CardioVas</h1>
+          <p>Heart Intelligence Lab <span className="topbar-separator">/</span> Track A</p>
+        </div>
+        <div className="demo-badge"><span /> DEMO MODE</div>
+      </header>
+
+      <main className="page-content">
+        <div className="status-row">
+          <span className={`status-dot ${apiStatus.includes('offline') ? 'offline' : ''}`} />
+          <span>{apiStatus}</span>
+          <span className="track-pill">MULTIMODAL AI HACKATHON 2026</span>
+        </div>
+
+        <section className="intro">
+          <div>
+            <p className="eyebrow">CARDIOVASCULAR RISK • EXPLAINABLE AI</p>
+            <h2>See the risk. Understand the signal.</h2>
+            <p>Explore a 3D heart view and test how clinical features change the demo output.</p>
+          </div>
+          <div className="intro-note"><strong>Prototype</strong><span>Educational use only</span></div>
+        </section>
+
+        <section className="workspace">
+          <div className="panel anatomy-panel">
+            <div className="panel-heading">
+              <div><p className="eyebrow">ANATOMY VIEWER</p><h3>Coronary artery explorer</h3></div>
+              <span className="interaction-hint">Drag to rotate · Scroll to zoom</span>
+            </div>
+            
+            <div className="heart-stage">
+              <HeartViewer predictionData={predictionData} loading={loading}/>
+            </div>
+
+          </div>
+
+          <div className="panel input-panel">
+            <div className="panel-heading">
+              <div><p className="eyebrow">PATIENT INPUT</p><h3>Clinical feature sandbox</h3></div>
+            </div>
+            <form onSubmit={runPrediction}>
+              <div className="field-grid">
+                <label>Age <span>years</span><input name="age" type="number" min="18" max="100" value={form.age} onChange={updateField} required /></label>
+                <label>Systolic BP <span>mmHg</span><input name="systolicBP" type="number" min="70" max="250" value={form.systolicBP} onChange={updateField} required /></label>
+                <label>Total cholesterol <span>mg/dL</span><input name="cholesterol" type="number" min="80" max="500" value={form.cholesterol} onChange={updateField} required /></label>
+                <label>Pulse rate <span>bpm</span><input name="pulse" type="number" min="30" max="220" value={form.pulse} onChange={updateField} required /></label>
+              </div>
+              <div className="toggle-list">
+                <label className="check-row"><input type="checkbox" name="stElevation" checked={form.stElevation} onChange={updateField} /><span><strong>ST Elevation</strong><small>ECG feature</small></span></label>
+                <label className="check-row"><input type="checkbox" name="tInversion" checked={form.tInversion} onChange={updateField} /><span><strong>T Inversion</strong><small>ECG feature</small></span></label>
+                <label className="check-row"><input type="checkbox" name="rwma" checked={form.rwma} onChange={updateField} /><span><strong>RWMA present</strong><small>Echo feature</small></span></label>
+              </div>
+              <button className="primary-button" type="submit" disabled={loading}>
+                {loading ? 'Calculating…' : 'Run demo prediction'} <span aria-hidden="true">↗</span>
+              </button>
+              {apiError && <p className="error-message">{apiError}</p>}
+            </form>
+            <p className="input-footnote">Use fictional values for the demo. Do not enter identifiable patient information.</p>
+          </div>
+
+          <div className="dashboard-span">
+            <Dashboard predictionData={predictionData} loading={loading} />
+          </div>
+        </section>
+
+        <section className="safety-banner">
+          <span className="safety-icon">i</span>
+          <p><strong>Clinical safety:</strong> All current predictions are illustrative demo heuristics, not outputs from a trained or validated model. They must not be used for diagnosis, treatment, or real patient decisions. Dataset-derived model metrics and a licensed anatomical asset are required before claiming clinical performance.</p>
+        </section>
+      </main>
+      <footer>CardioVas · Hackathon prototype · Built for transparent, responsible AI</footer>
+    </div>
+  );
+}
