@@ -1,0 +1,242 @@
+﻿import React, { Suspense, useMemo, useState } from 'react';
+import { Canvas } from '@react-three/fiber';
+import { OrbitControls, Html } from '@react-three/drei';
+import { useLoader } from '@react-three/fiber';
+import { GLTFLoader } from 'three-stdlib';
+import * as THREE from 'three';
+
+const arteries = [
+  {
+    id: 'FJ2723',
+    label: 'Right coronary artery trunk',
+    color: '#d94f50',
+  },
+  {
+    id: 'FJ2737',
+    label: 'Left coronary artery trunk',
+    color: '#f08a5d',
+  },
+  {
+    id: 'FJ2631',
+    label: 'Anterior interventricular branch trunk',
+    color: '#e6b84a',
+  },
+  {
+    id: 'FJ2649',
+    label: 'Circumflex branch — piece 1',
+    color: '#58a6a6',
+  },
+  {
+    id: 'FJ2650',
+    label: 'Circumflex branch — piece 2',
+    color: '#58a6a6',
+  },
+  {
+    id: 'FJ2651',
+    label: 'Circumflex branch — piece 3',
+    color: '#58a6a6',
+  },
+  {
+    id: 'FJ2652',
+    label: 'Circumflex branch — piece 4',
+    color: '#58a6a6',
+  },
+  {
+    id: 'FJ2653',
+    label: 'Circumflex branch — piece 5',
+    color: '#58a6a6',
+  },
+  {
+    id: 'FJ2654',
+    label: 'Circumflex branch — piece 6',
+    color: '#58a6a6',
+  },
+];
+
+function ArteryModel({ artery, visible }) {
+  const gltf = useLoader(
+    GLTFLoader,
+    `/models/bodyparts3d-test/glb/${artery.id}.glb`
+  );
+
+  const model = useMemo(() => {
+    const clone = gltf.scene.clone(true);
+
+    clone.traverse((child) => {
+      if (child.isMesh) {
+        child.material = new THREE.MeshStandardMaterial({
+          color: artery.color,
+          roughness: 0.72,
+          metalness: 0,
+          side: THREE.DoubleSide,
+        });
+        child.material.needsUpdate = true;
+      }
+    });
+
+    return clone;
+  }, [gltf.scene, artery.color]);
+
+  return <primitive object={model} visible={visible} />;
+}
+
+function HeartModel() {
+  const gltf = useLoader(GLTFLoader, '/models/heart.glb');
+
+  const prepared = useMemo(() => {
+    const model = gltf.scene.clone(true);
+
+    model.updateMatrixWorld(true);
+    const bounds = new THREE.Box3().setFromObject(model);
+
+    if (bounds.isEmpty()) {
+      console.error('Heart model has no measurable geometry.');
+      return { model, scale: 1 };
+    }
+
+    const center = bounds.getCenter(new THREE.Vector3());
+    const size = bounds.getSize(new THREE.Vector3());
+    const maxDimension = Math.max(size.x, size.y, size.z);
+
+    if (!Number.isFinite(maxDimension) || maxDimension <= 0) {
+      console.error('Heart model dimensions are invalid:', size);
+      return { model, scale: 1 };
+    }
+
+    model.position.sub(center);
+
+    const scale = 180 / maxDimension;
+    model.scale.setScalar(scale);
+
+    console.log('Heart model bounds:', {
+      originalSize: size.toArray(),
+      originalCenter: center.toArray(),
+      appliedScale: scale,
+    });
+
+    return { model, scale };
+  }, [gltf.scene]);
+
+  return (
+    <group position={[25, -125, 1220]}>
+      <primitive object={prepared.model} />
+    </group>
+  );
+}
+
+function Scene({ visibility, showHeart, showArteries }) {
+  return (
+    <>
+      <ambientLight intensity={1.6} />
+      <directionalLight position={[200, 100, 300]} intensity={2.2} />
+      <directionalLight position={[-150, -100, -200]} intensity={0.8} />
+
+      {showHeart && <HeartModel />}
+
+      {showArteries && (
+        <group>
+          {arteries.map((artery) => (
+            <ArteryModel
+              key={artery.id}
+              artery={artery}
+              visible={visibility[artery.id]}
+            />
+          ))}
+        </group>
+      )}
+
+      <OrbitControls makeDefault enableDamping target={[25, -125, 1220]} />
+
+    </>
+  );
+}
+
+export default function CoronaryArteryTest() {
+  const [viewMode, setViewMode] = useState('both');
+  const [visibility, setVisibility] = useState(() =>
+    Object.fromEntries(arteries.map((artery) => [artery.id, true]))
+  );
+
+  function toggleArtery(id) {
+    setVisibility((current) => ({
+      ...current,
+      [id]: !current[id],
+    }));
+  }
+
+  return (
+    <div className="coronary-test">
+      <div className="coronary-test-toolbar">
+        <div className="coronary-view-modes" role="group" aria-label="Anatomy display mode">
+          <button type="button" aria-pressed={viewMode === 'heart'} onClick={() => setViewMode('heart')}>Heart only</button>
+          <button type="button" aria-pressed={viewMode === 'arteries'} onClick={() => setViewMode('arteries')}>Arteries only</button>
+          <button type="button" aria-pressed={viewMode === 'both'} onClick={() => setViewMode('both')}>Heart + arteries</button>
+        </div>
+        <p>
+          Experimental anatomy preview. Toggle individual model pieces and
+          drag to rotate.
+        </p>
+        <button
+          type="button"
+          onClick={() =>
+            setVisibility(
+              Object.fromEntries(arteries.map((artery) => [artery.id, true]))
+            )
+          }
+        >
+          Show all
+        </button>
+      </div>
+
+      <div className="coronary-test-layout">
+        <div className="coronary-test-canvas">
+          <Canvas
+            camera={{
+              position: [25, -475, 1450],
+              fov: 45,
+              near: 0.1,
+              far: 10000,
+            }}
+          >
+            <Suspense
+              fallback={
+                <Html center>
+                  <div className="coronary-loading">Loading anatomy…</div>
+                </Html>
+              }
+            >
+              <Scene visibility={visibility} showHeart={viewMode !== 'arteries'} showArteries={viewMode !== 'heart'} />
+            </Suspense>
+          </Canvas>
+        </div>
+
+        <aside className="coronary-test-legend">
+          <strong>Model pieces</strong>
+          {arteries.map((artery) => (
+            <label key={artery.id} className="coronary-test-option">
+              <input
+                type="checkbox"
+                checked={visibility[artery.id]}
+                onChange={() => toggleArtery(artery.id)}
+              />
+              <span
+                className="coronary-test-swatch"
+                style={{ backgroundColor: artery.color }}
+              />
+              <span>{artery.label}</span>
+            </label>
+          ))}
+        </aside>
+      </div>
+
+      <p className="coronary-test-note">
+        These are selected anatomical mesh pieces, not a complete coronary
+        artery tree or a patient-specific model. This preview is for software
+        testing and education only.
+      </p>
+    </div>
+  );
+}
+
+
+
